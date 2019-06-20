@@ -22,6 +22,7 @@ public class RCTImageSequenceView extends ImageView {
     private Boolean loop = true;
     private ArrayList<AsyncTask> activeTasks;
     private HashMap<Integer, Bitmap> bitmaps;
+    private static HashMap<String, Bitmap> cachedBitmaps;
     private RCTResourceDrawableIdHelper resourceDrawableIdHelper;
 
     public RCTImageSequenceView(Context context) {
@@ -34,11 +35,13 @@ public class RCTImageSequenceView extends ImageView {
         private final Integer index;
         private final String uri;
         private final Context context;
+        private final Boolean setCache;
 
-        public DownloadImageTask(Integer index, String uri, Context context) {
+        public DownloadImageTask(Integer index, String uri, Context context, Boolean, setCache) {
             this.index = index;
             this.uri = uri;
             this.context = context;
+            this.setCache = setCache;
         }
 
         @Override
@@ -77,20 +80,37 @@ public class RCTImageSequenceView extends ImageView {
     }
 
     private void onTaskCompleted(DownloadImageTask downloadImageTask, Integer index, Bitmap bitmap) {
-        if (index == 0) {
-            // first image should be displayed as soon as possible.
-            this.setImageBitmap(bitmap);
-        }
+        if(downloadImageTask.setCache){
+            cachedBitmaps.put(downloadImageTask.uri, bitmap);
+            activeTasks.remove(downloadImageTask);
 
-        bitmaps.put(index, bitmap);
-        activeTasks.remove(downloadImageTask);
+            if (activeTasks.isEmpty()) {
+                // TODO: Cleanup if required
+            }
+        }else{
+            if (index == 0) {
+                // first image should be displayed as soon as possible.
+                this.setImageBitmap(bitmap);
+            }
 
-        if (activeTasks.isEmpty()) {
-            setupAnimationDrawable();
+            bitmaps.put(index, bitmap);
+            activeTasks.remove(downloadImageTask);
+
+            if (activeTasks.isEmpty()) {
+                setupAnimationDrawable();
+            }
         }
+    }
+    
+    public void setImagesCache(ArrayList<String> uris) {
+        setImages(uris, true);
     }
 
     public void setImages(ArrayList<String> uris) {
+        setImages(uris, false);
+    }
+
+    private void setImages(ArrayList<String> uris, Boolean setAsCache) {
         if (isLoading()) {
             // cancel ongoing tasks (if still loading previous images)
             for (int index = 0; index < activeTasks.size(); index++) {
@@ -99,17 +119,37 @@ public class RCTImageSequenceView extends ImageView {
         }
 
         activeTasks = new ArrayList<>(uris.size());
-        bitmaps = new HashMap<>(uris.size());
+
+        if(setAsCache){
+            cachedBitmaps = new HashMap<>(uris.size());
+        }else{
+            bitmaps = new HashMap<>(uris.size());
+        }
 
         for (int index = 0; index < uris.size(); index++) {
-            DownloadImageTask task = new DownloadImageTask(index, uris.get(index), getContext());
-            activeTasks.add(task);
-
-            try {
-                task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-            } catch (RejectedExecutionException e){
-                Log.e("react-native-image-sequence", "DownloadImageTask failed" + e.getMessage());
-                break;
+            if(!setAsCache){
+                Bitmap cachedBitmap = cachedBitmaps.get(uris.get(index));
+                if(cachedBitmap != null){
+                    bitmaps.put(index, cachedBitmap);
+                }else{
+                    DownloadImageTask task = new DownloadImageTask(index, uris.get(index), getContext(), setAsCache);
+                    activeTasks.add(task);
+                    try {
+                        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                    } catch (RejectedExecutionException e){
+                        Log.e("react-native-image-sequence", "DownloadImageTask failed" + e.getMessage());
+                        break;
+                    }
+                }
+            } else {
+                DownloadImageTask task = new DownloadImageTask(index, uris.get(index), getContext(), setAsCache);
+                activeTasks.add(task);
+                try {
+                    task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                } catch (RejectedExecutionException e){
+                    Log.e("react-native-image-sequence", "DownloadImageTask failed" + e.getMessage());
+                    break;
+                }
             }
         }
     }

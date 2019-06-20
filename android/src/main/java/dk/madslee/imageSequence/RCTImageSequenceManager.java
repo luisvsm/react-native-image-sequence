@@ -47,6 +47,21 @@ public class RCTImageSequenceManager extends SimpleViewManager<RCTImageSequenceV
     }
 
     /**
+     * @param view
+     * @param images an array of ReadableMap's {uri: "http://...."} return value of the resolveAssetSource(....)
+     */
+    @ReactProp(name = "imageCache")
+    public void setImageCache(final RCTImageSequenceView view, ReadableArray images) {
+        ArrayList<String> uris = new ArrayList<>();
+        for (int index = 0; index < images.size(); index++) {
+            ReadableMap map = images.getMap(index);
+            uris.add(map.getString("uri"));
+        }
+
+        view.setImageCache(uris);
+    }
+
+    /**
      * sets if animations is looped indefinitely.
      *
      * @param view
